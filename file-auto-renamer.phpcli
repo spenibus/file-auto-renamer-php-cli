@@ -1,0 +1,311 @@
+<?php
+/*******************************************************************************
+file auto renamer
+version: 2015-06-28 14:46 +0000
+*******************************************************************************/
+
+
+
+
+/******************************************************************************/
+error_reporting(E_WARNING);
+
+
+
+
+/******************************************************************************/
+$CFG_DIR_CONFIG = './config/';
+
+
+
+
+/******************************************************************************/
+function far_fileList($dir) {
+
+   if(!is_dir($dir)) {
+      echo "\ndirectory '$dir' not available";
+      return false;
+   }
+
+   $d = opendir($dir);
+   while(false !== $f = readdir($d)) {
+      if(is_file($dir.$f)) {
+         $list[] = $f;
+      }
+   }
+   closedir($d);
+
+   sort($list);
+   return $list;
+}
+
+
+
+
+/**************************************************************** directories */
+function far_directories() {
+
+   global $CFG_DIR_CONFIG;
+
+   $f = $CFG_DIR_CONFIG.'directories.txt';
+
+   if(!is_file($f)) {
+      echo "\nfile '$f' not available";
+      return false;
+   }
+
+   // get directories list
+   $dirs = file($f, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+   $dirs = array_map(
+      function($d){
+         return str_replace('\\', '/', $d).'/';
+      },
+      array_unique($dirs)
+   );
+
+   return $dirs;
+}
+
+
+
+
+/******************************************************************** filters */
+function far_filters() {
+
+   global $CFG_DIR_CONFIG;
+
+   // get filters
+   $filters = array();
+   $files   = far_fileList($CFG_DIR_CONFIG);
+
+   if($files === false) {
+      echo "\nNo filter available";
+      return false;
+   }
+
+   foreach($files as $file) {
+      if(mb_substr($file, 0, 7) == 'filter-') {
+
+         $data = file($CFG_DIR_CONFIG.$file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+
+         // line 0 is preg pattern, rest is callback function, empty ignored
+         $name = mb_substr($file, 7, -4);
+         $filters[$name] = array(
+            'file'     => $file,
+            'name'     => $name,
+            'pattern'  => $data[0],
+            'callback' => eval('return '.implode("\n", array_slice($data,1)).';'),
+         );
+      }
+   }
+
+   return $filters;
+}
+
+
+
+
+/******************************************************************** renamer */
+function far_renamer() {
+
+   $dirs    = far_directories();
+   $filters = far_filters();
+
+   if($dirs === false || $filters === false) {
+      echo "\nMissing directories or filters";
+      return;
+   }
+
+   $count = array(
+      'total'   => 0,
+      'skipped' => 0,
+      'exists'  => 0,
+      'renameSuccess' => 0,
+      'renameFailure' => 0,
+   );
+
+
+   // process dirs
+   foreach($dirs as $dir) {
+
+      // get files names
+      $filesRenamed = $files = far_fileList($dir);
+
+      // process files names
+      foreach($filters as $filter) {
+         $filesRenamed = preg_replace_callback($filter['pattern'], $filter['callback'], $filesRenamed);
+      }
+
+      // rename files
+      foreach($files as $key=>$file) {
+
+         ++$count['total'];
+
+         $status = '';
+
+         // unchanged, skip
+         if($file == $filesRenamed[$key]) {
+            $status = 'skipping: no change';
+            ++$count['skipped'];
+            continue;
+         }
+
+         // target file already exists, skip
+         elseif(file_exists($dir.$filesRenamed[$key])) {
+            $status = 'skipping: target exists';
+            ++$count['exists'];
+            continue;
+         }
+
+         // rename
+         else {
+            $status = 'renaming';
+
+            if(rename($dir.$file, $dir.$filesRenamed[$key])) {
+               ++$count['renameSuccess'];
+            }
+            else {
+               ++$count['renameFailure'];
+            }
+         }
+
+
+         echo "\n\n$status\n   $file\n   ".$filesRenamed[$key];
+      }
+   }
+
+   $perc = $count['total'] != 0
+      ? 100/$count['total']
+      : 0;
+
+   $percs = array_map(
+      function($c) use ($perc) {
+         $c = round($c*$perc,2);
+         $c = number_format($c, 2, '.', '').'%';
+         $c = sprintf('%7s', $c);
+         return $c;
+      },
+      $count
+   );
+
+
+   echo "
+
+*********************************
+           dirs: ".sprintf('%6s', count($dirs))."
+          files: ".sprintf('%6s', (int)$count['total'])."
+        filters: ".sprintf('%6s', count($filters))."
+
+        Renamed: ".sprintf('%6s', (int)$count['renameSuccess'])." | ".$percs['renameSuccess']."
+ Renamed failed: ".sprintf('%6s', (int)$count['renameFailure'])." | ".$percs['renameFailure']."
+   Pre-existing: ".sprintf('%6s', (int)$count['exists'])       ." | ".$percs['exists']."
+        Skipped: ".sprintf('%6s', (int)$count['skipped'])      ." | ".$percs['skipped']."
+*********************************";
+}
+
+
+
+
+/********************************************************* date: month to num */
+function dateMonthNum($s) {
+
+   $num = array(
+      'janvier'   => '01',
+      'fevrier'   => '02',
+         'février'   => '02',
+      'mars'      => '03',
+      'avril'     => '04',
+      'mai'       => '05',
+      'juin'      => '06',
+      'juillet'   => '07',
+      'aout'      => '08',
+         'août'      => '08',
+      'septembre' => '09',
+      'octobre'   => '10',
+      'novembre'  => '11',
+      'decembre'  => '12',
+         'décembre'  => '12',
+
+      'january'   => '01',
+      'february'  => '02',
+      'march'     => '03',
+      'april'     => '04',
+      'may'       => '05',
+      'june'      => '06',
+      'july'      => '07',
+      'august'    => '08',
+      'september' => '09',
+      'october'   => '10',
+      'november'  => '11',
+      'december'  => '12',
+   );
+
+   $s = mb_strtolower($s);
+
+   return $num[$s];
+}
+
+
+
+
+/************************************************************************ run */
+echo "
+********************************************************************************
+* File auto renamer                                                            *
+********************************************************************************
+
+*** Commands ***
+   r run
+   d dirs
+   f filters
+   x exit
+****************";
+
+
+// main loop
+while(true) {
+   echo "\n\n>";
+   $in = trim(fgets(STDIN));
+
+   // exit
+   if($in == 'x') {
+      break;
+   }
+
+   // rename files
+   elseif($in == 'r') {
+      far_renamer();
+   }
+
+   // show dirs
+   elseif($in == 'd') {
+      $dirs = far_directories();
+      if($dirs) {
+         echo "\n*** Dirs:\n".implode(
+            array_map(function($str){
+               return "\n   ".$str;
+            }, $dirs)
+         );
+      }
+   }
+
+   // show filters
+   elseif($in == 'f') {
+
+      $filters = far_filters();
+      if($filters) {
+         echo "\n*** Filters:\n".implode(
+            array_map(function($arr){
+               return "\n   ".$arr['name']."\n      ".$arr['pattern'];
+            }, $filters)
+         );
+      }
+   }
+
+   // unknown command
+   else {
+      echo "\nUnknown command";
+   }
+}
+exit(1);
+?>

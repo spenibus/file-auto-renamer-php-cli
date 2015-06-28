@@ -1,0 +1,7 @@
+/^red(.*)$/i
+
+
+function($m) {
+   // rename red to blue and move to subfolder
+   return 'justbluemyself/blue'.$m[1];
+}
