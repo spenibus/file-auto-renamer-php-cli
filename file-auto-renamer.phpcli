@@ -14,7 +14,43 @@ error_reporting(E_WARNING);
 
 
 /******************************************************************************/
-$CFG_DIR_CONFIG = './config/';
+$CFG_DIR_CONFIG  = './config/';
+
+$CFG_SESSION_LOG = array();
+
+
+
+
+/******************************************************************************/
+function far_log($str, $isVerbose = false) {
+    $GLOBALS['CFG_SESSION_LOG'][] = array(
+        'time'    => time(),
+        'text'    => $str,
+        'verbose' => $isVerbose ? true : false,
+    );
+}
+
+
+
+
+/******************************************************************************/
+function far_log_show($verbose = false) {
+
+    echo "\n[session log]".($verbose ? '[verbose]' :'');
+
+    foreach($GLOBALS['CFG_SESSION_LOG'] as $record) {
+
+        if($verbose === false && $record['verbose'] === true) {
+            continue;
+        }
+
+        echo "\n".$record['text'];
+            //.date('Y-m-d H:i:s O', $record['time'])
+            //.'> '
+    }
+
+    //echo implode("\n", $GLOBALS['CFG_SESSION_LOG']);
+}
 
 
 
@@ -124,6 +160,7 @@ function far_renamer() {
       'renameFailure' => 0,
    );
 
+   far_log("\nstart renaming - ".gmdate('Y-m-d H:i:s O'));
 
    // process dirs
    foreach($dirs as $dir) {
@@ -131,10 +168,12 @@ function far_renamer() {
       // get files names
       $filesRenamed = $files = far_fileList($dir);
 
+
       // process files names
       foreach($filters as $filter) {
          $filesRenamed = preg_replace_callback($filter['pattern'], $filter['callback'], $filesRenamed);
       }
+
 
       // rename files
       foreach($files as $key=>$file) {
@@ -142,19 +181,20 @@ function far_renamer() {
          ++$count['total'];
 
          $status = '';
+         $verbose = false;
 
          // unchanged, skip
          if($file == $filesRenamed[$key]) {
             $status = 'skipping: no change';
             ++$count['skipped'];
-            continue;
+            $verbose = true;
          }
 
          // target file already exists, skip
          elseif(file_exists($dir.$filesRenamed[$key])) {
             $status = 'skipping: target exists';
             ++$count['exists'];
-            continue;
+            $verbose = true;
          }
 
          // rename
@@ -170,9 +210,11 @@ function far_renamer() {
          }
 
 
-         echo "\n\n$status\n   $file\n   ".$filesRenamed[$key];
+         far_log("\n$status\n   $file\n   ".$filesRenamed[$key], $verbose);
       }
    }
+
+   far_log("\nend renaming - ".gmdate('Y-m-d H:i:s O'));
 
    $perc = $count['total'] != 0
       ? 100/$count['total']
@@ -255,10 +297,12 @@ echo "
 ********************************************************************************
 
 *** Commands ***
-   r run
-   d dirs
-   f filters
-   x exit
+    r     run
+    l     show session log
+    lv    show session log (verbose)
+    d     dirs
+    f     filters
+    x     exit
 ****************";
 
 
@@ -275,6 +319,16 @@ while(true) {
    // rename files
    elseif($in == 'r') {
       far_renamer();
+   }
+
+   // show log
+   elseif($in == 'l') {
+      far_log_show();
+   }
+
+   // show log (verbose)
+   elseif($in == 'lv') {
+      far_log_show(true);
    }
 
    // show dirs
